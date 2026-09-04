@@ -78,3 +78,15 @@ def test_leverage_in_swap(mock_okx):
     # Notional size with 2x leverage = 90.909 * 2 = 181.818
     # At $100 price, units = 1.818
     assert pytest.approx(decision.target_amount, 0.01) == (1000.0 / 11 * 2) / 100.0
+
+
+def test_strict_2_pct_risk(mock_okx):
+    rm = RiskManager(mock_okx)
+    sym_info = normalize_symbol("SOLUSDT", instrument_type="SPOT", target_quote="USDC")
+    # Entry at 100, SL at 90 (10% drop). 2% risk of $1000 = $20.
+    # Required position size: $20 / 0.10 = $200.
+    decision = rm.evaluate_buy_signal(sym_info, alert_price=100.0, sl_price=90.0)
+    assert decision.allowed is True
+    # Target notional should be $200
+    assert pytest.approx(decision.target_amount, 0.01) == 2.0  # 2.0 SOL at $100 = $200
+    # If SL is hit at $90: loss = 2.0 * (100 - 90) = $20 (exact 2% of $1000!)

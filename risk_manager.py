@@ -98,17 +98,28 @@ class RiskManager:
                 active_positions_count=active_count
             )
 
-        # 7. Calculate position sizing (2% risk calculation if SL is provided)
-        target_notional_usd = capital_per_slot
+        # 7. Calculate position sizing
+        capital_per_slot = usable_equity / self.capital_slots
+
         if sl_price is not None and sl_price > 0 and sl_price < price:
-            risk_usd = total_equity * 0.02  # Exactly 2% monetary risk
             dist_pct = (price - sl_price) / price
+            risk_usd = total_equity * (settings.risk_per_trade_pct / 100.0)  # Exactly 2% of total equity
             ideal_notional = risk_usd / dist_pct
-            # Cap at slot capital to ensure equal capital availability for all 11 cryptos
-            target_notional_usd = min(ideal_notional, capital_per_slot)
-            logger.info(
-                f"Calculated 2% risk size: ${ideal_notional:.2f} (capped at slot: ${target_notional_usd:.2f}) with SL {sl_price}"
-            )
+
+            if settings.risk_mode == "STRICT_2_PCT":
+                # In Strict 2% mode, calculate exact position size to lose exactly 2% at Stop Loss
+                # Cap at max_position_equity_pct (e.g. max 20% of account = ~$200) to protect diversification
+                max_trade_cap = total_equity * (settings.max_position_equity_pct / 100.0)
+                target_notional_usd = min(ideal_notional, max_trade_cap)
+                logger.info(
+                    f"[STRICT 2% RISK] Price={price}, SL={sl_price}, Dist={dist_pct*100:.2f}%, "
+                    f"Risk=${risk_usd:.2f} -> Sized at ${target_notional_usd:.2f}"
+                )
+            else:  # SLOT_BALANCED
+                target_notional_usd = min(ideal_notional, capital_per_slot)
+        else:
+            # If no SL is provided, use guaranteed slot capital
+            target_notional_usd = capital_per_slot
 
         if inst_type == "SWAP":
             target_notional_usd = target_notional_usd * self.leverage

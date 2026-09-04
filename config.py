@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     margin_mode: str = Field(default="isolated", alias="MARGIN_MODE")  # "isolated" or "cross"
     fallback_equity_usdt: float = Field(default=1000.0, alias="FALLBACK_EQUITY_USDT")
     safety_reserve_pct: float = Field(default=5.0, alias="SAFETY_RESERVE_PCT")
+    risk_per_trade_pct: float = Field(default=2.0, alias="RISK_PER_TRADE_PCT")  # Exact 2% risk per trade
+    risk_mode: str = Field(default="STRICT_2_PCT", alias="RISK_MODE")            # "STRICT_2_PCT" or "SLOT_BALANCED"
+    max_position_equity_pct: float = Field(default=20.0, alias="MAX_POSITION_EQUITY_PCT")  # Max cap per trade (20% of account)
 
     # Security
     webhook_secret: str = Field(default="secret_token_123", alias="WEBHOOK_SECRET")
