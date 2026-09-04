@@ -87,6 +87,19 @@ class OKXService:
         logger.warning(f"Using fallback equity: {settings.fallback_equity_usdt} USDT")
         return settings.fallback_equity_usdt
 
+    def get_free_balance(self, currency: Optional[str] = None) -> float:
+        """Fetch available free cash balance for the quote currency (e.g. USDC or USDT)."""
+        target_ccy = currency or settings.quote_currency
+        try:
+            balance = self.exchange.fetch_balance()
+            free = float(balance.get(target_ccy, {}).get('free', 0.0) or 0.0)
+            if free <= 0 and 'free' in balance:
+                free = float(balance['free'].get(target_ccy, 0.0) or 0.0)
+            return free
+        except Exception as e:
+            logger.error(f"Error fetching free balance for {target_ccy}: {e}")
+            return 0.0
+
     def get_open_positions(self) -> Set[str]:
         """Return a set of base asset symbols that are currently open (e.g. {'SOL', 'BTC'}).
         Prevents opening duplicate trades on the same crypto.

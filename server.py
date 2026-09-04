@@ -141,7 +141,8 @@ async def handle_webhook(payload: WebhookPayload, request: Request):
         exec_price = float(order_result.get('price') or decision.current_price)
         filled_amount = float(order_result.get('amount') or decision.target_amount)
 
-        # 6. Notify via Telegram and Console with SL/TP reminder
+        algo_placed = bool(order_result.get('algo_order') or (order_result.get('info', {}).get('attachAlgoOrds')))
+        # 6. Notify via Telegram and Console with SL/TP status
         await notify_trade_executed(
             ticker=symbol_info["ccxt_symbol"],
             base=symbol_info["base"],
@@ -151,7 +152,10 @@ async def handle_webhook(payload: WebhookPayload, request: Request):
             capital_allocated=decision.capital_allocated_usd,
             instrument_type=symbol_info["instrument_type"],
             active_positions_count=decision.active_positions_count + 1,
-            max_positions=settings.max_open_positions
+            max_positions=settings.max_open_positions,
+            sl_price=payload.sl,
+            tp_price=payload.tp,
+            algo_placed=algo_placed
         )
 
         return {

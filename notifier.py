@@ -48,21 +48,42 @@ async def notify_trade_executed(
     capital_allocated: float,
     instrument_type: str,
     active_positions_count: int,
-    max_positions: int
+    max_positions: int,
+    sl_price: Optional[float] = None,
+    tp_price: Optional[float] = None,
+    algo_placed: bool = False
 ):
     """Notify when a trade is successfully opened on OKX."""
-    msg = (
-        f"🟢 *ORDRE EXECUTADA A OKX*\n"
-        f"━━━━━━━━━━━━━━━━━━━\n"
-        f"• *Actiu:* `{ticker}` ({base})\n"
-        f"• *Operació:* `{side.upper()}` ({instrument_type})\n"
-        f"• *Preu Execució:* `${price:,.4f}`\n"
-        f"• *Quantitat:* `{amount}`\n"
-        f"• *Capital Assignat:* `${capital_allocated:,.2f} USDT`\n"
-        f"• *Posicions Actives:* `{active_positions_count}/{max_positions}`\n"
-        f"━━━━━━━━━━━━━━━━━━━\n"
-        f"⚠️ *ATENCIÓ:* Entra ara mateix al teu compte d'OKX per col·locar manualment el **Stop Loss (SL)** i el **Take Profit (TP)** segons la gràfica diària!"
-    )
+    lines = [
+        f"🟢 *ORDRE EXECUTADA A OKX*",
+        f"━━━━━━━━━━━━━━━━━━━",
+        f"• *Actiu:* `{ticker}` ({base})",
+        f"• *Operació:* `{side.upper()}` ({instrument_type})",
+        f"• *Preu Execució:* `${price:,.4f}`",
+        f"• *Quantitat:* `{amount}`",
+        f"• *Capital Invertit:* `${capital_allocated:,.2f} {settings.quote_currency}`",
+        f"• *Posicions Actives:* `{active_positions_count}/{max_positions}`",
+    ]
+
+    if sl_price:
+        dist = abs((price - sl_price) / price) * 100
+        risk_usd = capital_allocated * (dist / 100.0)
+        lines.append(f"• *Stop Loss (SL):* `${sl_price:,.4f}` (-{dist:.2f}%)")
+        lines.append(f"• *Risc a SL:* `${risk_usd:,.2f}` (~2.0% del compte)")
+    if tp_price:
+        gain = abs((tp_price - price) / price) * 100
+        lines.append(f"• *Take Profit (TP):* `${tp_price:,.4f}` (+{gain:.2f}%)")
+
+    lines.append(f"━━━━━━━━━━━━━━━━━━━")
+
+    if algo_placed:
+        lines.append(f"🛡️ *Protecció:* Ordre OCO (SL + TP) activada automàticament a OKX.")
+    elif sl_price or tp_price:
+        lines.append(f"⚠️ *Nota:* Comprova a OKX que l'ordre bracket SL/TP s'hagi registrat.")
+    else:
+        lines.append(f"⚠️ *ATENCIÓ:* Entra a OKX per col·locar manualment el Stop Loss (SL) i Take Profit (TP).")
+
+    msg = "\n".join(lines)
     logger.info(msg)
     await send_telegram_message(msg)
 

@@ -123,6 +123,30 @@ class RiskManager:
 
         if inst_type == "SWAP":
             target_notional_usd = target_notional_usd * self.leverage
+        else:
+            # For SPOT trading, verify against actual free cash in quote currency
+            try:
+                free_cash = self.okx.get_free_balance(settings.quote_currency)
+                if free_cash > 0:
+                    max_affordable = free_cash * 0.995  # 0.5% buffer for fees
+                    if target_notional_usd > max_affordable:
+                        logger.warning(
+                            f"Target size ${target_notional_usd:.2f} exceeds available free {settings.quote_currency} "
+                            f"${free_cash:.2f}. Capping size to ${max_affordable:.2f}."
+                        )
+                        target_notional_usd = max_affordable
+
+                    if target_notional_usd < 5.0:
+                        msg = f"Liquiditat lliure insuficient ({free_cash:.2f} {settings.quote_currency}) per obrir nova posició."
+                        logger.warning(msg)
+                        return TradeDecision(
+                            allowed=False,
+                            reason=msg,
+                            symbol_info=symbol_info,
+                            active_positions_count=active_count
+                        )
+            except Exception as e:
+                logger.debug(f"Could not verify free cash balance: {e}")
 
         # Units of base cryptocurrency (e.g. 1.25 SOL)
         units = target_notional_usd / price
@@ -135,7 +159,7 @@ class RiskManager:
             reason="Aprovat pels controls de risc.",
             symbol_info=symbol_info,
             target_amount=final_amount,
-            capital_allocated_usd=capital_per_slot,
+            capital_allocated_usd=target_notional_usd,
             current_price=price,
             equity_usd=total_equity,
             active_positions_count=active_count

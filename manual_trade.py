@@ -43,7 +43,7 @@ def main():
 
     # 2. Risk Evaluation & Sizing
     risk_manager = RiskManager(okx_service)
-    decision = risk_manager.evaluate_buy_signal(symbol_info)
+    decision = risk_manager.evaluate_buy_signal(symbol_info, sl_price=args.sl)
 
     if not decision.allowed:
         print(f"\n❌ L'ordre ha estat REBUTJADA pel motor de risc:")
@@ -51,13 +51,15 @@ def main():
         return
 
     print("\n📊 Resum del càlcul de posició:")
-    print(f"• Equity Total del Compte: ${decision.equity_usd:,.2f} USDT")
-    print(f"• Capital assignat (1/{settings.capital_slots}): ${decision.capital_allocated_usd:,.2f} USDT")
+    print(f"• Equity Total del Compte: ${decision.equity_usd:,.2f} {settings.quote_currency}")
+    print(f"• Capital assignat: ${decision.capital_allocated_usd:,.2f} {settings.quote_currency}")
     print(f"• Preu actual de mercat: ${decision.current_price:,.6f}")
     print(f"• Quantitat a enviar a OKX: {decision.target_amount} contractes / unitats")
     if args.sl:
         dist = ((decision.current_price - args.sl) / decision.current_price) * 100
+        risk_at_sl = decision.capital_allocated_usd * (dist / 100.0)
         print(f"• Distància fins al Stop Loss: {dist:.2f}% de caiguda")
+        print(f"• Risc monetari si toca SL: ${risk_at_sl:,.2f} ({risk_at_sl / decision.equity_usd * 100:.1f}% de la cartera)")
 
     # 3. Confirmation
     if not args.yes:

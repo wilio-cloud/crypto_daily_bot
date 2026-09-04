@@ -11,6 +11,7 @@ from symbol_mapper import normalize_symbol
 def mock_okx():
     mock = MagicMock()
     mock.get_total_equity.return_value = 1000.0
+    mock.get_free_balance.return_value = 1000.0
     mock.get_open_positions.return_value = set()
     mock.get_current_price.return_value = 50.0
     mock.load_markets.return_value = None
@@ -89,4 +90,23 @@ def test_strict_2_pct_risk(mock_okx):
     assert decision.allowed is True
     # Target notional should be $200
     assert pytest.approx(decision.target_amount, 0.01) == 2.0  # 2.0 SOL at $100 = $200
+    assert pytest.approx(decision.capital_allocated_usd, 0.01) == 200.0
     # If SL is hit at $90: loss = 2.0 * (100 - 90) = $20 (exact 2% of $1000!)
+
+
+def test_liquidity_cap_and_rejection(mock_okx):
+    rm = RiskManager(mock_okx)
+    sym_info = normalize_symbol("SOLUSDT", instrument_type="SPOT", target_quote="USDC")
+
+    # Case 1: Free balance is only $100 (less than ideal $200) -> should cap to ~$99.50
+    mock_okx.get_free_balance.return_value = 100.0
+    decision = rm.evaluate_buy_signal(sym_info, alert_price=100.0, sl_price=90.0)
+    assert decision.allowed is True
+    assert pytest.approx(decision.capital_allocated_usd, 0.1) == 99.5
+
+    # Case 2: Free balance is near 0 (< $5) -> should reject
+    mock_okx.get_free_balance.return_value = 2.0
+    decision = rm.evaluate_buy_signal(sym_info, alert_price=100.0, sl_price=90.0)
+    assert decision.allowed is False
+    assert "insuficient" in decision.reason.lower()
+
