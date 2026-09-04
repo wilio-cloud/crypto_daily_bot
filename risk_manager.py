@@ -35,7 +35,8 @@ class RiskManager:
     def evaluate_buy_signal(
         self,
         symbol_info: dict,
-        alert_price: Optional[float] = None
+        alert_price: Optional[float] = None,
+        sl_price: Optional[float] = None
     ) -> TradeDecision:
         """Evaluate incoming BUY alert against portfolio risk limits."""
         base_asset = symbol_info["base"]
@@ -81,8 +82,7 @@ class RiskManager:
                 active_positions_count=active_count
             )
 
-        # 5. Calculate capital per slot (Guaranteeing funds for all 14 cryptos)
-        # Apply safety reserve buffer (e.g. 5% cash buffer)
+        # 5. Calculate base capital per slot (Guaranteeing funds for all 11 cryptos)
         usable_equity = total_equity * (1.0 - (self.safety_reserve_pct / 100.0))
         capital_per_slot = usable_equity / self.capital_slots
 
@@ -98,11 +98,20 @@ class RiskManager:
                 active_positions_count=active_count
             )
 
-        # 7. Calculate position sizing
+        # 7. Calculate position sizing (2% risk calculation if SL is provided)
+        target_notional_usd = capital_per_slot
+        if sl_price is not None and sl_price > 0 and sl_price < price:
+            risk_usd = total_equity * 0.02  # Exactly 2% monetary risk
+            dist_pct = (price - sl_price) / price
+            ideal_notional = risk_usd / dist_pct
+            # Cap at slot capital to ensure equal capital availability for all 11 cryptos
+            target_notional_usd = min(ideal_notional, capital_per_slot)
+            logger.info(
+                f"Calculated 2% risk size: ${ideal_notional:.2f} (capped at slot: ${target_notional_usd:.2f}) with SL {sl_price}"
+            )
+
         if inst_type == "SWAP":
-            target_notional_usd = capital_per_slot * self.leverage
-        else:  # SPOT
-            target_notional_usd = capital_per_slot
+            target_notional_usd = target_notional_usd * self.leverage
 
         # Units of base cryptocurrency (e.g. 1.25 SOL)
         units = target_notional_usd / price

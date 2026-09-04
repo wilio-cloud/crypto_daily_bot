@@ -112,8 +112,12 @@ async def handle_webhook(payload: WebhookPayload, request: Request):
     symbol_info = normalize_symbol(payload.ticker, settings.instrument_type)
     logger.info(f"Normalized symbol: {symbol_info}")
 
-    # 4. Evaluate Risk & Sizing (14 slots guarantee)
-    decision = risk_manager.evaluate_buy_signal(symbol_info, alert_price=payload.price)
+    # 4. Evaluate Risk & Sizing (11 slots guarantee and 2% risk if SL present)
+    decision = risk_manager.evaluate_buy_signal(
+        symbol_info,
+        alert_price=payload.price,
+        sl_price=payload.sl
+    )
 
     if not decision.allowed:
         await notify_trade_skipped(payload.ticker, decision.reason)
