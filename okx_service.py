@@ -153,13 +153,17 @@ class OKXService:
         tp_price: Optional[float] = None
     ) -> Dict:
         """Execute a market BUY order on OKX with optional Stop Loss and Take Profit brackets.
+        For SWAP: uses attachAlgoOrds.
+        For SPOT: executes BUY order then places an OCO algo order on the filled tokens.
         Returns order result dict or raises Exception.
         """
         self.load_markets()
-        self.setup_instrument(ccxt_symbol)
-
         market = self.exchange.market(ccxt_symbol)
-        
+        is_contract = market.get('contract', False)
+
+        if is_contract:
+            self.setup_instrument(ccxt_symbol)
+
         # Round amount according to exchange rules
         formatted_amount = self.exchange.amount_to_precision(ccxt_symbol, amount)
         float_amount = float(formatted_amount)
@@ -170,29 +174,30 @@ class OKXService:
                 f"Calculated amount {float_amount} is below minimum {min_amount} for {ccxt_symbol}"
             )
 
-        # Prepare bracket orders (SL and TP)
-        is_contract = market.get('contract', False)
+        # Prepare base params
         params: dict = {
             'tdMode': settings.margin_mode if is_contract else 'cash'
         }
         
-        attach_algo = []
-        if sl_price is not None and sl_price > 0:
-            attach_algo.append({
-                'slTriggerPx': str(sl_price),
-                'slOrdPx': '-1'  # -1 means market order upon trigger
-            })
-            logger.info(f"Attaching Stop Loss at {sl_price} for {ccxt_symbol}")
+        # If contract (SWAP), use attachAlgoOrds
+        if is_contract:
+            attach_algo = []
+            if sl_price is not None and sl_price > 0:
+                attach_algo.append({
+                    'slTriggerPx': str(sl_price),
+                    'slOrdPx': '-1'  # -1 means market order upon trigger
+                })
+                logger.info(f"Attaching Stop Loss at {sl_price} for {ccxt_symbol}")
 
-        if tp_price is not None and tp_price > 0:
-            attach_algo.append({
-                'tpTriggerPx': str(tp_price),
-                'tpOrdPx': '-1'  # -1 means market order upon trigger
-            })
-            logger.info(f"Attaching Take Profit at {tp_price} for {ccxt_symbol}")
+            if tp_price is not None and tp_price > 0:
+                attach_algo.append({
+                    'tpTriggerPx': str(tp_price),
+                    'tpOrdPx': '-1'  # -1 means market order upon trigger
+                })
+                logger.info(f"Attaching Take Profit at {tp_price} for {ccxt_symbol}")
 
-        if attach_algo:
-            params['attachAlgoOrds'] = attach_algo
+            if attach_algo:
+                params['attachAlgoOrds'] = attach_algo
 
         logger.info(f"Sending MARKET BUY order: {ccxt_symbol} | Amount: {float_amount} | Params: {params}")
         
@@ -203,6 +208,47 @@ class OKXService:
             amount=float_amount,
             params=params
         )
+
+        # For SPOT: Place OCO (TP + SL) algo order immediately after buying
+        if not is_contract and (sl_price or tp_price):
+            try:
+                import time
+                time.sleep(0.5)  # brief wait for balance update
+                
+                filled_sz = float(order.get('filled') or order.get('amount') or float_amount)
+                sz_str = self.exchange.amount_to_precision(ccxt_symbol, filled_sz)
+                
+                inst_id = market['id']
+                algo_params = {
+                    'instId': inst_id,
+                    'tdMode': 'cash',
+                    'side': 'sell',
+                    'sz': sz_str,
+                }
+                
+                if sl_price and tp_price:
+                    algo_params['ordType'] = 'oco'
+                    algo_params['tpTriggerPx'] = str(tp_price)
+                    algo_params['tpOrdPx'] = '-1'
+                    algo_params['slTriggerPx'] = str(sl_price)
+                    algo_params['slOrdPx'] = '-1'
+                elif sl_price:
+                    algo_params['ordType'] = 'conditional'
+                    algo_params['slTriggerPx'] = str(sl_price)
+                    algo_params['slOrdPx'] = '-1'
+                elif tp_price:
+                    algo_params['ordType'] = 'conditional'
+                    algo_params['tpTriggerPx'] = str(tp_price)
+                    algo_params['tpOrdPx'] = '-1'
+                
+                logger.info(f"Placing Spot OCO SL/TP order: {algo_params}")
+                algo_res = self.exchange.private_post_trade_order_algo(algo_params)
+                logger.info(f"Spot OCO order created successfully: {algo_res}")
+                order['algo_order'] = algo_res
+            except Exception as e:
+                logger.error(f"Failed to place attached Spot OCO order: {e}")
+                order['algo_error'] = str(e)
+
         return order
 
 

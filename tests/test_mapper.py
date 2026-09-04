@@ -15,7 +15,7 @@ def test_extract_base_and_quote():
 
 
 def test_normalize_symbol_swap():
-    res = normalize_symbol("BINANCE:SOLUSDT.P", instrument_type="SWAP")
+    res = normalize_symbol("BINANCE:SOLUSDT.P", instrument_type="SWAP", target_quote="USDT")
     assert res["base"] == "SOL"
     assert res["quote"] == "USDT"
     assert res["ccxt_symbol"] == "SOL/USDT:USDT"
@@ -24,9 +24,9 @@ def test_normalize_symbol_swap():
 
 
 def test_normalize_symbol_spot():
-    res = normalize_symbol("BINANCE:SOLUSDT", instrument_type="SPOT")
+    res = normalize_symbol("BINANCE:SOLUSDT", instrument_type="SPOT", target_quote="USDC")
     assert res["base"] == "SOL"
-    assert res["quote"] == "USDT"
-    assert res["ccxt_symbol"] == "SOL/USDT"
-    assert res["okx_id"] == "SOL-USDT"
+    assert res["quote"] == "USDC"
+    assert res["ccxt_symbol"] == "SOL/USDC"
+    assert res["okx_id"] == "SOL-USDC"
     assert res["instrument_type"] == "SPOT"
