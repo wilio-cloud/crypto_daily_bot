@@ -62,9 +62,19 @@ class OKXService:
             # 1. Unified Account Total Equity (preferred by OKX v5)
             if 'info' in balance and 'data' in balance['info'] and len(balance['info']['data']) > 0:
                 account_info = balance['info']['data'][0]
-                total_eq = float(account_info.get('totalEq', 0.0))
+                total_eq = float(account_info.get('totalEq', 0.0) or 0.0)
                 if total_eq > 0:
                     return total_eq
+                
+                details = account_info.get('details', [])
+                for d in details:
+                    if d.get('ccy') == 'USDT':
+                        usdt_eq = float(d.get('eq', 0.0) or 0.0)
+                        if usdt_eq > 0:
+                            return usdt_eq
+                    eq_usd = float(d.get('eqUsd', 0.0) or 0.0)
+                    if eq_usd > 0:
+                        return eq_usd
 
             # 2. Total USDT in balance
             usdt_total = float(balance.get('total', {}).get('USDT', 0.0))
