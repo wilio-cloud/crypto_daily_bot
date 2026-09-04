@@ -43,17 +43,23 @@ def extract_base_and_quote(raw_ticker: str) -> tuple[str, str]:
     return clean, "USDT"
 
 
-def normalize_symbol(raw_ticker: str, instrument_type: str = "SWAP") -> Dict[str, str]:
+def normalize_symbol(
+    raw_ticker: str,
+    instrument_type: str = "SPOT",
+    target_quote: Optional[str] = None
+) -> Dict[str, str]:
     """Convert raw TradingView ticker into normalized exchange formats.
     
     Returns a dictionary with:
         - 'base': Base coin (e.g. 'SOL')
-        - 'quote': Quote currency (e.g. 'USDT')
-        - 'ccxt_symbol': Standard CCXT symbol (e.g. 'SOL/USDT:USDT' for SWAP, 'SOL/USDT' for SPOT)
-        - 'okx_id': Native OKX instrument ID (e.g. 'SOL-USDT-SWAP' or 'SOL-USDT')
+        - 'quote': Quote currency (e.g. 'USDC' or 'USDT')
+        - 'ccxt_symbol': Standard CCXT symbol (e.g. 'SOL/USDC' or 'SOL/USDT:USDT')
+        - 'okx_id': Native OKX instrument ID (e.g. 'SOL-USDC' or 'SOL-USDT-SWAP')
     """
-    base, quote = extract_base_and_quote(raw_ticker)
+    from config import settings
+    base, raw_quote = extract_base_and_quote(raw_ticker)
     inst_type = instrument_type.upper()
+    quote = (target_quote or settings.quote_currency or raw_quote or "USDC").upper()
     
     if inst_type == "SWAP":
         return {

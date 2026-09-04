@@ -171,8 +171,9 @@ class OKXService:
             )
 
         # Prepare bracket orders (SL and TP)
+        is_contract = market.get('contract', False)
         params: dict = {
-            'tdMode': settings.margin_mode
+            'tdMode': settings.margin_mode if is_contract else 'cash'
         }
         
         attach_algo = []

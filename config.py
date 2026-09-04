@@ -23,7 +23,8 @@ class Settings(BaseSettings):
     okx_hostname: str = Field(default="my.okx.com", alias="OKX_HOSTNAME")
 
     # Strategy & Risk Configuration
-    instrument_type: str = Field(default="SWAP", alias="INSTRUMENT_TYPE")  # "SWAP" or "SPOT"
+    instrument_type: str = Field(default="SPOT", alias="INSTRUMENT_TYPE")  # "SWAP" or "SPOT"
+    quote_currency: str = Field(default="USDC", alias="QUOTE_CURRENCY")    # "USDC" or "USDT"
     max_open_positions: int = Field(default=11, alias="MAX_OPEN_POSITIONS")
     capital_slots: int = Field(default=11, alias="CAPITAL_SLOTS")
     leverage: int = Field(default=2, alias="LEVERAGE")
