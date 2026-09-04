@@ -3,7 +3,7 @@ Supports both SPOT and USDT-margined PERPETUAL SWAPS.
 """
 
 import re
-from typing import Dict
+from typing import Dict, Optional
 
 
 def extract_base_and_quote(raw_ticker: str) -> tuple[str, str]:
