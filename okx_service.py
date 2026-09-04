@@ -138,9 +138,11 @@ class OKXService:
         self,
         ccxt_symbol: str,
         amount: float,
-        price_hint: Optional[float] = None
+        price_hint: Optional[float] = None,
+        sl_price: Optional[float] = None,
+        tp_price: Optional[float] = None
     ) -> Dict:
-        """Execute a market BUY order on OKX.
+        """Execute a market BUY order on OKX with optional Stop Loss and Take Profit brackets.
         Returns order result dict or raises Exception.
         """
         self.load_markets()
@@ -158,13 +160,37 @@ class OKXService:
                 f"Calculated amount {float_amount} is below minimum {min_amount} for {ccxt_symbol}"
             )
 
-        logger.info(f"Sending MARKET BUY order: {ccxt_symbol} | Amount: {float_amount}")
+        # Prepare bracket orders (SL and TP)
+        params: dict = {
+            'tdMode': settings.margin_mode
+        }
+        
+        attach_algo = []
+        if sl_price is not None and sl_price > 0:
+            attach_algo.append({
+                'slTriggerPx': str(sl_price),
+                'slOrdPx': '-1'  # -1 means market order upon trigger
+            })
+            logger.info(f"Attaching Stop Loss at {sl_price} for {ccxt_symbol}")
+
+        if tp_price is not None and tp_price > 0:
+            attach_algo.append({
+                'tpTriggerPx': str(tp_price),
+                'tpOrdPx': '-1'  # -1 means market order upon trigger
+            })
+            logger.info(f"Attaching Take Profit at {tp_price} for {ccxt_symbol}")
+
+        if attach_algo:
+            params['attachAlgoOrds'] = attach_algo
+
+        logger.info(f"Sending MARKET BUY order: {ccxt_symbol} | Amount: {float_amount} | Params: {params}")
         
         order = self.exchange.create_order(
             symbol=ccxt_symbol,
             type='market',
             side='buy',
-            amount=float_amount
+            amount=float_amount,
+            params=params
         )
         return order
 

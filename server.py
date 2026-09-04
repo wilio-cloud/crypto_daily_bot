@@ -63,6 +63,8 @@ class WebhookPayload(BaseModel):
     ticker: str = Field(..., description="TradingView ticker e.g. SOLUSDT, SOLUSDT.P")
     price: Optional[float] = Field(default=None, description="Current price from {{close}}")
     action: str = Field(default="BUY", description="Action to perform (BUY)")
+    sl: Optional[float] = Field(default=None, description="Stop Loss trigger price")
+    tp: Optional[float] = Field(default=None, description="Take Profit trigger price")
 
 
 @app.get("/")
@@ -127,7 +129,9 @@ async def handle_webhook(payload: WebhookPayload, request: Request):
         order_result = okx_service.execute_market_buy(
             ccxt_symbol=symbol_info["ccxt_symbol"],
             amount=decision.target_amount,
-            price_hint=decision.current_price
+            price_hint=decision.current_price,
+            sl_price=payload.sl,
+            tp_price=payload.tp
         )
         
         exec_price = float(order_result.get('price') or decision.current_price)
