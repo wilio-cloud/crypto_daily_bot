@@ -213,10 +213,15 @@ class OKXService:
         if not is_contract and (sl_price or tp_price):
             try:
                 import time
-                time.sleep(0.5)  # brief wait for balance update
+                time.sleep(1.0)  # brief wait for balance settlement
                 
-                filled_sz = float(order.get('filled') or order.get('amount') or float_amount)
-                sz_str = self.exchange.amount_to_precision(ccxt_symbol, filled_sz)
+                base_ccy = market['base']
+                bal = self.exchange.fetch_balance()
+                actual_free = float(bal.get(base_ccy, {}).get('free', 0.0))
+                if actual_free <= 0:
+                    actual_free = float(order.get('filled') or order.get('amount') or float_amount)
+                
+                sz_str = self.exchange.amount_to_precision(ccxt_symbol, actual_free)
                 
                 inst_id = market['id']
                 algo_params = {
