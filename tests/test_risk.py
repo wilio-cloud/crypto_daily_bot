@@ -110,3 +110,20 @@ def test_liquidity_cap_and_rejection(mock_okx):
     assert decision.allowed is False
     assert "insuficient" in decision.reason.lower()
 
+
+def test_limit_order_evaluation(mock_okx):
+    rm = RiskManager(mock_okx)
+    sym_info = normalize_symbol("XRPUSDC", instrument_type="SPOT", target_quote="USDC")
+    # Limit entry at 1.2719, SL at 1.0557
+    mock_okx.get_total_equity.return_value = 1131.29
+    mock_okx.get_free_balance.return_value = 960.0
+    decision = rm.evaluate_buy_signal(sym_info, alert_price=1.2719, sl_price=1.0557)
+
+    assert decision.allowed is True
+    # Risk is 2% of 1131.29 = $22.6258
+    # Distance is (1.2719 - 1.0557) / 1.2719 = 0.16998
+    # Size is $22.6258 / 0.16998 = ~$133.11 USDC
+    assert pytest.approx(decision.capital_allocated_usd, 0.1) == 133.11
+    assert pytest.approx(decision.target_amount, 0.1) == (133.11 / 1.2719)
+
+

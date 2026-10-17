@@ -119,13 +119,23 @@ class OKXService:
             else:
                 # Fetch spot balances
                 balance = self.exchange.fetch_balance()
-                total_balances = balance.get('total', {})
-                for asset, amount in total_balances.items():
-                    if asset in ['USDT', 'USDC', 'USD', 'EUR']:
-                        continue
-                    # Ignore tiny dust balances
-                    if float(amount or 0.0) > 0.0001:
-                        open_assets.add(asset)
+                details = balance.get('info', {}).get('data', [{}])[0].get('details', [])
+                if details:
+                    for d in details:
+                        ccy = d.get('ccy', '')
+                        if ccy in ['USDT', 'USDC', 'USD', 'EUR']:
+                            continue
+                        eq_usd = float(d.get('eqUsd', 0.0) or 0.0)
+                        if eq_usd >= 5.0:  # Only consider active positions >= $5
+                            open_assets.add(ccy)
+                else:
+                    total_balances = balance.get('total', {})
+                    for asset, amount in total_balances.items():
+                        if asset in ['USDT', 'USDC', 'USD', 'EUR']:
+                            continue
+                        # Ignore tiny dust balances
+                        if float(amount or 0.0) > 0.0001:
+                            open_assets.add(asset)
 
         except Exception as e:
             logger.error(f"Error checking open positions: {e}")
@@ -269,5 +279,116 @@ class OKXService:
 
         return order
 
+    def execute_limit_buy(
+        self,
+        ccxt_symbol: str,
+        amount: float,
+        price: float,
+        sl_price: Optional[float] = None,
+        tp_price: Optional[float] = None
+    ) -> Dict:
+        """Execute a limit BUY order on OKX with optional attached Stop Loss and Take Profit brackets.
+        Uses attachAlgoOrds for both SWAP and SPOT so OKX activates SL/TP automatically upon fill.
+        """
+        self.load_markets()
+        market = self.exchange.market(ccxt_symbol)
+        is_contract = market.get('contract', False)
+
+        if is_contract:
+            self.setup_instrument(ccxt_symbol)
+
+        formatted_amount = self.exchange.amount_to_precision(ccxt_symbol, amount)
+        float_amount = float(formatted_amount)
+        formatted_price = self.exchange.price_to_precision(ccxt_symbol, price)
+        float_price = float(formatted_price)
+
+        min_amount = market.get('limits', {}).get('amount', {}).get('min', 0.0) or 0.0
+        if float_amount < min_amount:
+            raise ValueError(
+                f"Calculated amount {float_amount} is below minimum {min_amount} for {ccxt_symbol}"
+            )
+
+        params: dict = {
+            'tdMode': settings.margin_mode if is_contract else 'cash'
+        }
+
+        # Build attachAlgoOrds
+        algo_item = {}
+        if tp_price is not None and tp_price > 0:
+            algo_item['tpTriggerPx'] = self.exchange.price_to_precision(ccxt_symbol, tp_price)
+            algo_item['tpOrdPx'] = '-1'
+            logger.info(f"Attaching Take Profit at {algo_item['tpTriggerPx']} for {ccxt_symbol}")
+
+        if sl_price is not None and sl_price > 0:
+            algo_item['slTriggerPx'] = self.exchange.price_to_precision(ccxt_symbol, sl_price)
+            algo_item['slOrdPx'] = '-1'
+            logger.info(f"Attaching Stop Loss at {algo_item['slTriggerPx']} for {ccxt_symbol}")
+
+        if algo_item:
+            params['attachAlgoOrds'] = [algo_item]
+
+        logger.info(f"Sending LIMIT BUY order: {ccxt_symbol} | Amount: {float_amount} @ {float_price} | Params: {params}")
+
+        order = self.exchange.create_order(
+            symbol=ccxt_symbol,
+            type='limit',
+            side='buy',
+            amount=float_amount,
+            price=float_price,
+            params=params
+        )
+        return order
+
+    def close_position(self, ccxt_symbol: str) -> Dict:
+        """Close an open position: cancels pending algo orders (SL/TP) and executes a market SELL."""
+        self.load_markets()
+        market = self.exchange.market(ccxt_symbol)
+        inst_id = market['id']
+        base_ccy = market['base']
+        is_contract = market.get('contract', False)
+
+        # 1. Cancel pending algo orders (OCO, conditional, trigger) for this instId
+        try:
+            for ord_type in ['oco', 'conditional', 'trigger']:
+                res = self.exchange.private_get_trade_orders_algo_pending({
+                    'ordType': ord_type,
+                    'instId': inst_id
+                })
+                cancel_list = []
+                for item in res.get('data', []):
+                    algo_id = item.get('algoId')
+                    if algo_id:
+                        cancel_list.append({'algoId': algo_id, 'instId': inst_id})
+                if cancel_list:
+                    logger.info(f"Cancelling {len(cancel_list)} pending {ord_type} algo order(s) for {inst_id}")
+                    self.exchange.private_post_trade_cancel_algos(cancel_list)
+        except Exception as e:
+            logger.warning(f"Error cancelling algo orders for {inst_id}: {e}")
+
+        # 2. Check balance to sell
+        bal = self.exchange.fetch_balance()
+        total_bal = float(bal.get(base_ccy, {}).get('total', 0.0) or 0.0)
+        formatted_amount = self.exchange.amount_to_precision(ccxt_symbol, total_bal)
+        float_amount = float(formatted_amount)
+        min_amount = market.get('limits', {}).get('amount', {}).get('min', 0.0) or 0.0
+
+        if float_amount < min_amount:
+            raise ValueError(f"Available balance {float_amount} is below minimum {min_amount} for {ccxt_symbol}")
+
+        logger.info(f"Executing MARKET SELL to close {ccxt_symbol} | Amount: {float_amount}")
+        params = {'tdMode': settings.margin_mode if is_contract else 'cash'}
+        if is_contract:
+            params['reduceOnly'] = True
+
+        order = self.exchange.create_order(
+            symbol=ccxt_symbol,
+            type='market',
+            side='sell',
+            amount=float_amount,
+            params=params
+        )
+        return order
+
 
 okx_service = OKXService()
+

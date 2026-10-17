@@ -103,10 +103,34 @@ async def handle_webhook(payload: WebhookPayload, request: Request):
             detail="Unauthorized: Secret token does not match."
         )
 
-    # 2. Action Check (Currently focused on BUY signals)
+    # 2. Action Handling
+    if payload.action.upper() == "SELL":
+        symbol_info = normalize_symbol(payload.ticker, settings.instrument_type)
+        logger.info(f"Received SELL webhook for {symbol_info['ccxt_symbol']}. Closing position...")
+        try:
+            close_result = okx_service.close_position(symbol_info["ccxt_symbol"])
+            logger.info(f"Position closed successfully: {close_result}")
+            await send_telegram_message(
+                f"🔴 *POSICIÓ TANCADA A MERCAT (SENYAL SELL)*\n"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"• *Actiu:* `{symbol_info['ccxt_symbol']}`\n"
+                f"• *Quantitat venuda:* `{close_result.get('amount')}`\n"
+                f"• *Preu:* `${close_result.get('price') or payload.price or 'Mercat'}`"
+            )
+            return {
+                "status": "closed",
+                "symbol": symbol_info["ccxt_symbol"],
+                "order_id": close_result.get('id'),
+                "amount": close_result.get('amount')
+            }
+        except Exception as e:
+            logger.error(f"Failed to close position for {symbol_info['ccxt_symbol']}: {e}")
+            await send_telegram_message(f"⚠️ *ERROR TANCANT POSICIÓ {symbol_info['ccxt_symbol']}:* {e}")
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
     if payload.action.upper() != "BUY":
-        logger.info(f"Action '{payload.action}' is not BUY. Skipping.")
-        return {"status": "ignored", "reason": f"Action {payload.action} not supported in current phase."}
+        logger.info(f"Action '{payload.action}' is not supported. Skipping.")
+        return {"status": "ignored", "reason": f"Action {payload.action} not supported."}
 
     # 3. Normalize ticker
     symbol_info = normalize_symbol(payload.ticker, settings.instrument_type)
